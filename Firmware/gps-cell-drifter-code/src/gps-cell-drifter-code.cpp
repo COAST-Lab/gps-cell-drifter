@@ -33,21 +33,23 @@ uint32_t timer = millis();
 const pin_t MY_LED = D7; // blink to let us know you're alive
 bool led_state = HIGH; // starting state
 
-// Global objects; TODO: save power stats!
+// Fuel gauge object to get battery voltage
 FuelGauge batteryMonitor;
 
 // String for printing and publishing
 String dataString = "";
 const char * eventName = "whereAmI";
 
+// To use Particle devices without cloud connectivity
+SYSTEM_MODE(SEMI_AUTOMATIC);
+SYSTEM_THREAD(ENABLED);
+
+//--------------------------USER VARIABLES----------------------------------------
 // Define whether to publish
 #define PUBLISHING 0
 const unsigned long PUBLISH_PERIOD_MS = 300000; // milliseconds between publish events
 const unsigned long DATALOG_PERIOD_MS = 1000; // milliseconds between datalog events
 
-// To use Particle devices without cloud connectivity
-SYSTEM_MODE(SEMI_AUTOMATIC);
-SYSTEM_THREAD(ENABLED);
 
 //===============================================================================
 // INITIALIZATION
@@ -169,6 +171,9 @@ void createDataString() {
 
   // Angle
   dataString += String(GPS.angle);
+
+  // Battery voltage
+  dataString += String(batteryMonitor.getVCell());
 }
 
 /* ---------------------- PRINT TO SD CARD FUNCTION ---------------------- */
@@ -262,6 +267,8 @@ void serialPrintGPSLoc() {
   Serial.println(GPS.lon);
 }
 
+// PJB note: TODO: verify order of operations and threading here. What happens if it gets stuck here or 
+// if steps proceed too fast (i.e., it tries to publish before actually having a connection)?
 void publishData() {
 
   //connect particle to the cloud
