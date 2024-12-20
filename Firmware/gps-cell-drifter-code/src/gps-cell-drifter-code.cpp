@@ -5,9 +5,11 @@ void setup();
 void loop();
 
 // function prototypes for saving and serial printing (eventually publishing also)
+void createDataString();
 void printToFile();
 void serialPrintGPSTime();
 void serialPrintGPSLoc();
+void publishData();
 
 long real_time;
 int millis_now;
@@ -32,9 +34,17 @@ const pin_t MY_LED = D7; // blink to let us know you're alive
 bool led_state = HIGH; // starting state
 
 
-// Global objects; TODO: save power stats
+// Global objects; TODO: save power stats!
 FuelGauge batteryMonitor;
 
+// String for printing and publishing
+String dataString = "";
+const char * eventName = "whereAmI";
+
+// Define whether to publish
+#define PUBLISHING 0
+const unsigned long PUBLISH_PERIOD_MS = 300000; // milliseconds between publish events
+const unsigned long DATALOG_PERIOD_MS = 1000; // milliseconds between datalog events
 
 // To use Particle devices without cloud connectivity
 SYSTEM_MODE(SEMI_AUTOMATIC);
@@ -45,6 +55,12 @@ SYSTEM_THREAD(ENABLED);
 // INITIALIZATION
 //===============================================================================
 void setup() {
+
+  if (PUBLISHING == 1) {
+    Particle.connect();
+  } else {
+    Cellular.off(); // Turn off cellular for preliminary testing
+  }
 
     pinMode(MY_LED, OUTPUT);
 
@@ -91,9 +107,10 @@ void loop() {
     }
 
     // approximately every second or so, print out the current stats
-    if (millis() - timer > 1000) {
-        timer = millis(); // reset the timer
-
+    if (millis() - timer > DATALOG_PERIOD_MS) {
+        // reset the timer
+        // CRITICAL WARNING: watch this for rollover back to zero once millis maxes out
+        timer = millis(); 
 
         serialPrintGPSTime();
 
@@ -104,15 +121,62 @@ void loop() {
             digitalWrite(MY_LED, led_state); // turn the LED on (HIGH is the voltage level)
 
             serialPrintGPSLoc();
-
         }
 
+        createDataString();
         printToFile();
 
+        
+
+        if (PUBLISHING == 1) {
+          if (millis() - timer > PUBLISH_PERIOD_MS){
+            publishData();
+          } // no else needed; just keep rolling
+        }
     }
 
 }
 
+void createDataString(){
+
+  dataString = ""; // Initialize empty string each time to prevent reprinting old data if no new data arrive
+
+  // Date
+  dataString += String(GPS.month, DEC) + "/";
+  dataString += String(GPS.day, DEC) + "/20";
+  dataString += String(GPS.year, DEC) + ",";
+
+  // Time
+  dataString += String(GPS.hour, DEC) + ":";
+  if (GPS.minute < 10) dataString += "0";
+  dataString += String(GPS.minute, DEC) + ":";
+  if (GPS.seconds < 10) dataString += "0";
+  dataString += String(GPS.seconds, DEC) + ".";
+  if (GPS.milliseconds < 10) {
+      dataString += "00";
+  } else if (GPS.milliseconds > 9 && GPS.milliseconds < 100) {
+      dataString += "0";
+  }
+  dataString += String(GPS.milliseconds) + ",";
+
+  // Elapsed Time
+  dataString += String(millis() / 1000) + ",";
+
+  // Location
+  dataString += String(GPS.latitude, 4) + ",";
+  dataString += String(GPS.lat) + ","; // N or S
+  dataString += String(GPS.longitude, 4) + ",";
+  dataString += String(GPS.lon) + ","; // E or W
+
+  // Altitude
+  dataString += String(GPS.altitude) + ",";
+
+  // Speed
+  dataString += String(GPS.speed) + ",";
+
+  // Angle
+  dataString += String(GPS.angle);
+}
 
 /* ---------------------- PRINT TO SD CARD FUNCTION ---------------------- */
 void printToFile() {
@@ -138,58 +202,9 @@ void printToFile() {
 
   // if the file is available, write to it:
   if (dataFile) {
-    // Date
-    dataFile.print(GPS.month, DEC);
-    dataFile.print('/');
-    dataFile.print(GPS.day, DEC);
-    dataFile.print("/20");
-    dataFile.print(GPS.year, DEC);
-    dataFile.print(",");
 
-    // Time
-    dataFile.print(GPS.hour, DEC);
-    dataFile.print(':');
-    if (GPS.minute < 10) {
-      dataFile.print('0');
-    }
-    dataFile.print(GPS.minute, DEC);
-    dataFile.print(':');
-    if (GPS.seconds < 10) {
-      dataFile.print('0');
-    }
-    dataFile.print(GPS.seconds, DEC);
-    dataFile.print(".");
-    if (GPS.milliseconds < 10) {
-      dataFile.print("00");
-    } else if (GPS.milliseconds > 9 && GPS.milliseconds < 100) {
-      dataFile.print("0");
-    }
-    dataFile.println(GPS.milliseconds);
-    dataFile.print(",");
-
-    // Elapsed Time
-    dataFile.print(millis() / 1000);
-    dataFile.print(",");
-
-    // Location
-    dataFile.print(GPS.latitude, 4);
-    dataFile.print(",");
-    dataFile.print(GPS.lat); // N or S
-    dataFile.print(",");
-    dataFile.print(GPS.longitude, 4);
-    dataFile.print(",");
-    dataFile.print(GPS.lon); // E or W
-    dataFile.print(",");
-
-    //Altitude
-    dataFile.print(GPS.altitude);
-    dataFile.print(",");
-
-    dataFile.print(GPS.speed);
-    dataFile.print(",");
-
-    // Angle
-    dataFile.println(GPS.angle);
+    // Print the entire formatted string
+    dataFile.println(dataString);
 
     dataFile.close();
   }
@@ -252,4 +267,29 @@ void serialPrintGPSLoc() {
   Serial.print(", ");
   Serial.print(GPS.longitude, 4);
   Serial.println(GPS.lon);
+}
+
+void publishData() {
+
+      //connect particle to the cloud
+      if (Particle.connected() == false) {
+        Particle.connect();
+        Log.info("Trying to connect");
+      }
+
+      // If connected, publish data buffer
+      if (Particle.connected()) {
+
+        Log.info("publishing data");
+
+        // bool (or Future) below requires acknowledgment to proceed
+        bool success = Particle.publish(eventName, dataString, 60, PRIVATE, WITH_ACK);
+        Log.info("publish result %d", success); 
+
+        
+      }
+      // If not connected after certain amount of time, go to sleep to save battery
+      else {
+          Log.info("not connecting; proceed without publishing");
+      }
 }
