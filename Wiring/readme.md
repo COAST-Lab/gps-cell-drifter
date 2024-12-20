@@ -1,0 +1,1 @@
+Wiring diagram has not been updated since its use in https://github.com/SUPScientist/smart-coasts-bathy-mapping. New wiring diagram is almost unnecessary as we are using FeatherWing Tripler to connect Boron, Adalogger FeatherWing, and GPS FeatherWing. 

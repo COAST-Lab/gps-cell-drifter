@@ -1,2 +1,2 @@
-# smart-coasts-bathy-mapping
-Low-cost, open-source bathymetric mapping (depth, GPS, angle, datalogging)
+# gps-cell-drifter
+This project began as a fork of https://github.com/SUPScientist/smart-coasts-bathy-mapping. That project has GPS, depth and temperature sensing, and cellular communications capabilities. This project strips it down to GPS and cellular communications for common coastal drifter applications.
