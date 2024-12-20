@@ -45,8 +45,8 @@ SYSTEM_MODE(SEMI_AUTOMATIC);
 SYSTEM_THREAD(ENABLED);
 
 //--------------------------USER VARIABLES----------------------------------------
-// Define whether to publish
-#define PUBLISHING 0
+// Define whether to publish; 1 for publishing, 0 for not
+#define PUBLISHING 1
 const unsigned long PUBLISH_PERIOD_MS = 300000; // milliseconds between publish events
 const unsigned long DATALOG_PERIOD_MS = 1000; // milliseconds between datalog events
 
@@ -170,7 +170,7 @@ void createDataString() {
   dataString += String(GPS.speed) + ",";
 
   // Angle
-  dataString += String(GPS.angle);
+  dataString += String(GPS.angle) + ",";
 
   // Battery voltage
   dataString += String(batteryMonitor.getVCell());
