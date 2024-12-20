@@ -28,6 +28,7 @@ bool filenameCreated = false;
 #define GPSSerial Serial1
 Adafruit_GPS GPS( & GPSSerial);
 uint32_t timer = millis();
+uint32_t publishTimer = millis();
 
 //-------------------------- LED Setup -------------------------------------------
 const pin_t MY_LED = D7; // blink to let us know you're alive
@@ -46,7 +47,7 @@ SYSTEM_THREAD(ENABLED);
 
 //--------------------------USER VARIABLES----------------------------------------
 // Define whether to publish; 1 for publishing, 0 for not
-#define PUBLISHING 1
+#define PUBLISHING 0
 const unsigned long PUBLISH_PERIOD_MS = 300000; // milliseconds between publish events
 const unsigned long DATALOG_PERIOD_MS = 1000; // milliseconds between datalog events
 
@@ -124,7 +125,8 @@ void loop() {
     printToFile();
 
     if (PUBLISHING == 1) {
-      if (millis() - timer > PUBLISH_PERIOD_MS) {
+      if (millis() - publishTimer > PUBLISH_PERIOD_MS) {
+        publishTimer = millis();
         publishData();
       } // no else needed; just keep rolling
     }
