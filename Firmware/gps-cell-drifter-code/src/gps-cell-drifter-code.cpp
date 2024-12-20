@@ -1,4 +1,3 @@
-
 #include "Particle.h"
 
 void setup();
@@ -14,9 +13,9 @@ void publishData();
 long real_time;
 int millis_now;
 
-
 // ------------------ SD SPI Configuration Details --------------------------------
 #include "SdFat.h"
+
 const int SD_CHIP_SELECT = D5;
 SdFat SD;
 
@@ -25,6 +24,7 @@ bool filenameCreated = false;
 
 // ---------------------------- GPS ----------------------------------------------
 #include <Adafruit_GPS.h>
+
 #define GPSSerial Serial1
 Adafruit_GPS GPS( & GPSSerial);
 uint32_t timer = millis();
@@ -32,7 +32,6 @@ uint32_t timer = millis();
 //-------------------------- LED Setup -------------------------------------------
 const pin_t MY_LED = D7; // blink to let us know you're alive
 bool led_state = HIGH; // starting state
-
 
 // Global objects; TODO: save power stats!
 FuelGauge batteryMonitor;
@@ -50,7 +49,6 @@ const unsigned long DATALOG_PERIOD_MS = 1000; // milliseconds between datalog ev
 SYSTEM_MODE(SEMI_AUTOMATIC);
 SYSTEM_THREAD(ENABLED);
 
-
 //===============================================================================
 // INITIALIZATION
 //===============================================================================
@@ -62,82 +60,77 @@ void setup() {
     Cellular.off(); // Turn off cellular for preliminary testing
   }
 
-    pinMode(MY_LED, OUTPUT);
+  pinMode(MY_LED, OUTPUT);
 
+  //Serial.begin(9600);
+  Serial.begin(115200);
+  Serial.println("GPS drifter test");
 
-    //Serial.begin(9600);
-    Serial.begin(115200);
-    Serial.println("GPS drifter test");
+  // Set up GPS
+  GPS.begin(9600);
 
-    // Set up GPS
-    GPS.begin(9600);
+  // uncomment next line to turn on RMC (recommended minimum) and GGA (fix data) including altitude
+  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
 
-    // uncomment next line to turn on RMC (recommended minimum) and GGA (fix data) including altitude
-    GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+  // uncomment next line to turn on only the "minimum recommended" data
+  //GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY);
 
-    // uncomment next line to turn on only the "minimum recommended" data
-    //GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY);
+  // Set the update rate
+  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ); // 1 Hz update rate
+  // For the parsing code to work nicely and have time to sort thru the data, and print it out we don't suggest using anything higher than 1 Hz
 
-    // Set the update rate
-    GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ); // 1 Hz update rate
-    // For the parsing code to work nicely and have time to sort thru the data, and print it out we don't suggest using anything higher than 1 Hz
-    
-
-    // Initialize the SD library
-    if (!SD.begin(SD_CHIP_SELECT, SPI_FULL_SPEED)) {
-        Serial.println("failed to open card");
-        return;
-    }
+  // Initialize the SD library
+  if (!SD.begin(SD_CHIP_SELECT, SPI_FULL_SPEED)) {
+    Serial.println("failed to open card");
+    return;
+  }
 
 }
-
 
 //===============================================================================
 // MAIN
 //===============================================================================
 void loop() {
 
-    // read data from the GPS in the 'main loop'
-    char c = GPS.read();
+  // read data from the GPS in the 'main loop'
+  char c = GPS.read();
 
-    // if a sentence is received, we can check the checksum, parse it...
-    if (GPS.newNMEAreceived()) {
-        if (!GPS.parse(GPS.lastNMEA())) // this also sets the newNMEAreceived() flag to false
-            return; // we can fail to parse a sentence in which case we should just wait for another
+  // if a sentence is received, we can check the checksum, parse it...
+  if (GPS.newNMEAreceived()) {
+    if (!GPS.parse(GPS.lastNMEA())) // this also sets the newNMEAreceived() flag to false
+      return; // we can fail to parse a sentence in which case we should just wait for another
+  }
+
+  // approximately every second or so, print out the current stats
+  if (millis() - timer > DATALOG_PERIOD_MS) {
+    // reset the timer
+    // CRITICAL WARNING: watch this for rollover back to zero once millis maxes out
+    timer = millis();
+
+    serialPrintGPSTime();
+
+    // If GPS gets a fix, print out and save good data
+    if (GPS.fix) {
+      // Blink to let us know you're alive
+      led_state = !led_state;
+      digitalWrite(MY_LED, led_state); // turn the LED on (HIGH is the voltage level)
+
+      serialPrintGPSLoc();
     }
 
-    // approximately every second or so, print out the current stats
-    if (millis() - timer > DATALOG_PERIOD_MS) {
-        // reset the timer
-        // CRITICAL WARNING: watch this for rollover back to zero once millis maxes out
-        timer = millis(); 
+    createDataString();
+    printToFile();
 
-        serialPrintGPSTime();
-
-        // If GPS gets a fix, print out and save good data
-        if (GPS.fix) {  
-            // Blink to let us know you're alive
-            led_state = !led_state;
-            digitalWrite(MY_LED, led_state); // turn the LED on (HIGH is the voltage level)
-
-            serialPrintGPSLoc();
-        }
-
-        createDataString();
-        printToFile();
-
-        
-
-        if (PUBLISHING == 1) {
-          if (millis() - timer > PUBLISH_PERIOD_MS){
-            publishData();
-          } // no else needed; just keep rolling
-        }
+    if (PUBLISHING == 1) {
+      if (millis() - timer > PUBLISH_PERIOD_MS) {
+        publishData();
+      } // no else needed; just keep rolling
     }
+  }
 
 }
 
-void createDataString(){
+void createDataString() {
 
   dataString = ""; // Initialize empty string each time to prevent reprinting old data if no new data arrive
 
@@ -153,9 +146,9 @@ void createDataString(){
   if (GPS.seconds < 10) dataString += "0";
   dataString += String(GPS.seconds, DEC) + ".";
   if (GPS.milliseconds < 10) {
-      dataString += "00";
+    dataString += "00";
   } else if (GPS.milliseconds > 9 && GPS.milliseconds < 100) {
-      dataString += "0";
+    dataString += "0";
   }
   dataString += String(GPS.milliseconds) + ",";
 
@@ -216,7 +209,7 @@ void printToFile() {
 
 void serialPrintGPSTime() {
   Serial.print("\nTime: ");
-  
+
   // Hour
   if (GPS.hour < 10) {
     Serial.print('0');
@@ -245,17 +238,17 @@ void serialPrintGPSTime() {
     Serial.print("0");
   }
   Serial.println(GPS.milliseconds);
-  
+
   Serial.print("Date: ");
   Serial.print(GPS.month, DEC);
   Serial.print('/');
   Serial.print(GPS.day, DEC);
   Serial.print("/20");
   Serial.println(GPS.year, DEC);
-  
+
   Serial.print("Fix: ");
   Serial.print((int) GPS.fix);
-  
+
   Serial.print(" quality: ");
   Serial.println((int) GPS.fixquality);
 }
@@ -271,25 +264,24 @@ void serialPrintGPSLoc() {
 
 void publishData() {
 
-      //connect particle to the cloud
-      if (Particle.connected() == false) {
-        Particle.connect();
-        Log.info("Trying to connect");
-      }
+  //connect particle to the cloud
+  if (Particle.connected() == false) {
+    Particle.connect();
+    Log.info("Trying to connect");
+  }
 
-      // If connected, publish data buffer
-      if (Particle.connected()) {
+  // If connected, publish data buffer
+  if (Particle.connected()) {
 
-        Log.info("publishing data");
+    Log.info("publishing data");
 
-        // bool (or Future) below requires acknowledgment to proceed
-        bool success = Particle.publish(eventName, dataString, 60, PRIVATE, WITH_ACK);
-        Log.info("publish result %d", success); 
+    // bool (or Future) below requires acknowledgment to proceed
+    bool success = Particle.publish(eventName, dataString, 60, PRIVATE, WITH_ACK);
+    Log.info("publish result %d", success);
 
-        
-      }
-      // If not connected after certain amount of time, go to sleep to save battery
-      else {
-          Log.info("not connecting; proceed without publishing");
-      }
+  }
+  // If not connected after certain amount of time, go to sleep to save battery
+  else {
+    Log.info("not connecting; proceed without publishing");
+  }
 }
