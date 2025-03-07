@@ -9,6 +9,7 @@ void printToFile();
 void serialPrintGPSTime();
 void serialPrintGPSLoc();
 void publishData();
+void parsePGTOPSentence(const char *nmea);
 
 long real_time;
 int millis_now;
@@ -82,6 +83,9 @@ void setup() {
   GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ); // 1 Hz update rate
   // For the parsing code to work nicely and have time to sort thru the data, and print it out we don't suggest using anything higher than 1 Hz
 
+  // Request updates on antenna status, comment out to keep quiet
+  GPS.sendCommand(PGCMD_ANTENNA);
+
   // Initialize the SD library
   if (!SD.begin(SD_CHIP_SELECT, SPI_FULL_SPEED)) {
     Serial.println("failed to open card");
@@ -100,8 +104,12 @@ void loop() {
 
   // if a sentence is received, we can check the checksum, parse it...
   if (GPS.newNMEAreceived()) {
-    if (!GPS.parse(GPS.lastNMEA())) // this also sets the newNMEAreceived() flag to false
+    const char *nmea = GPS.lastNMEA();
+    if (!GPS.parse((char *)nmea)) // this also sets the newNMEAreceived() flag to false
       return; // we can fail to parse a sentence in which case we should just wait for another
+
+    // Check for antenna status sentence
+    parsePGTOPSentence(nmea);
   }
 
   // approximately every second or so, print out the current stats
@@ -292,5 +300,36 @@ void publishData() {
   // If not connected after certain amount of time, go to sleep to save battery
   else {
     Log.info("not connecting; proceed without publishing");
+  }
+}
+
+void parsePGTOPSentence(const char *nmea) {
+  // Example sentence: $PGTOP,11,3*6F
+  // The third field (3) is the antenna status
+  // 3 means external antenna connected
+  // 2 means internal antenna used
+
+  
+  if ((strstr(nmea, "$PGTOP")) || (strstr(nmea, "$PCD"))) {
+    char *token = strtok((char *)nmea, ",");
+    int fieldIndex = 0;
+    int antennaStatus = 0;
+
+    while (token != NULL) {
+      if (fieldIndex == 2) { // Check if the current field is the third field
+        antennaStatus = atoi(token); // Convert the third field to an integer
+        break; // Exit the loop as we have found the antenna status
+      }
+      token = strtok(NULL, ","); // Move to the next field
+      fieldIndex++; // Increment the field index
+    }
+
+    if (antennaStatus == 3) {
+      Serial.println("External antenna detected.");
+    } else if (antennaStatus == 2) {
+      Serial.println("Internal antenna used.");
+    } else {
+      Serial.println("Unknown antenna status.");
+    }
   }
 }
